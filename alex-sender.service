@@ -1,0 +1,15 @@
+[Unit]
+Description=ALEX-SENDER dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/alex-sender
+ExecStart=/home/pi/alex-sender/venv/bin/python3 /home/pi/alex-sender/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
