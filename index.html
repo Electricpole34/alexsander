@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ server_name }} :: dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f0b;
+    --fg: #33ff5b;
+    --fg-dim: #1f8f38;
+    --amber: #ffb000;
+    --red: #ff4d4d;
+    --panel-border: #226b30;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Courier New", "Consolas", monospace;
+    font-size: 15px;
+  }
+  body {
+    padding: 24px 16px 60px;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(51,255,91,0.035) 0px, rgba(51,255,91,0.035) 1px, transparent 1px, transparent 2px);
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+
+  pre.banner {
+    color: var(--fg);
+    text-shadow: 0 0 6px rgba(51,255,91,0.55);
+    font-size: 11px;
+    line-height: 1.15;
+    margin: 0 0 4px;
+    overflow-x: auto;
+  }
+  .subtitle {
+    color: var(--fg-dim);
+    margin: 0 0 20px;
+    letter-spacing: 2px;
+  }
+  .subtitle .dot { color: var(--amber); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    border: 1px solid var(--panel-border);
+    padding: 14px 16px 16px;
+    position: relative;
+    background: rgba(51,255,91,0.02);
+  }
+  .panel::before {
+    content: attr(data-title);
+    position: absolute;
+    top: -10px;
+    left: 12px;
+    background: var(--bg);
+    padding: 0 8px;
+    color: var(--amber);
+    letter-spacing: 2px;
+    font-size: 13px;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 10px 0;
+  }
+  .label { color: var(--fg-dim); }
+  .value { color: var(--fg); }
+  .value.warn { color: var(--amber); }
+  .value.crit { color: var(--red); }
+
+  .bar-line {
+    font-variant-ligatures: none;
+    white-space: pre;
+    margin: 2px 0 12px;
+  }
+  .bar-line .pct { color: var(--fg); margin-left: 8px; }
+
+  .storage-block { margin-bottom: 18px; }
+  .storage-block:last-child { margin-bottom: 0; }
+  .storage-title { color: var(--fg-dim); margin-bottom: 4px; }
+  .storage-sub { color: var(--fg-dim); font-size: 12px; }
+
+  .footer {
+    margin-top: 24px;
+    color: var(--fg-dim);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .blink { animation: blink 1.4s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  .offline { color: var(--red); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<pre class="banner">
+    ___    __    _______  __     _____ _______   ______  __________
+   /   |  / /   / ____/ |/ /    / ___// ____/ | / / __ \/ ____/ __ \
+  / /| | / /   / __/  |   /_____\__ \/ __/ /  |/ / / / / __/ / /_/ /
+ / ___ |/ /___/ /___ /   /_____/__/ / /___/ /|  / /_/ / /___/ _, _/
+/_/  |_/_____/_____//_/|_|    /____/_____/_/ |_/_____/_____/_/ |_|
+</pre>
+<div class="subtitle">home server <span class="dot">•</span> status monitor <span class="blink">_</span></div>
+
+<div class="grid">
+  <div class="panel" data-title="SYSTEM">
+    <div class="row"><span class="label">cpu usage</span><span class="value" id="cpu-pct">--%</span></div>
+    <div class="bar-line" id="cpu-bar">[--------------------]</div>
+
+    <div class="row"><span class="label">cpu temp</span><span class="value" id="cpu-temp">-- °C</span></div>
+    <div class="row"><span class="label">ram usage</span><span class="value" id="ram-pct">-- / -- GB</span></div>
+    <div class="bar-line" id="ram-bar">[--------------------]</div>
+
+    <div class="row"><span class="label">uptime</span><span class="value" id="uptime">--</span></div>
+    <div class="row"><span class="label">cores</span><span class="value" id="cores">--</span></div>
+  </div>
+
+  <div class="panel" data-title="STORAGE">
+    <div class="storage-block">
+      <div class="storage-title">SSD — boot / os</div>
+      <div class="bar-line" id="ssd-bar">[--------------------]</div>
+      <div class="storage-sub" id="ssd-sub">-- / -- GB used</div>
+    </div>
+    <div class="storage-block">
+      <div class="storage-title">HDD — wd my book</div>
+      <div class="bar-line" id="hdd-bar">[--------------------]</div>
+      <div class="storage-sub" id="hdd-sub">-- / -- GB used</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <span id="conn-status">connecting...</span>
+  <span id="clock">--:--:--</span>
+</div>
+</div>
+
+<script>
+const BAR_WIDTH = 20;
+
+function makeBar(pct) {
+  pct = Math.max(0, Math.min(100, pct || 0));
+  const filled = Math.round((pct / 100) * BAR_WIDTH);
+  return "[" + "#".repeat(filled) + "-".repeat(BAR_WIDTH - filled) + "]";
+}
+
+function pctClass(pct) {
+  if (pct >= 90) return "crit";
+  if (pct >= 70) return "warn";
+  return "";
+}
+
+function setBar(barEl, pct) {
+  barEl.textContent = makeBar(pct);
+  barEl.innerHTML += `<span class="pct ${pctClass(pct)}">${pct.toFixed(0)}%</span>`;
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/stats");
+    if (!res.ok) throw new Error("bad response");
+    const d = await res.json();
+
+    document.getElementById("cpu-pct").textContent = d.cpu.percent.toFixed(1) + "%";
+    document.getElementById("cpu-pct").className = "value " + pctClass(d.cpu.percent);
+    setBar(document.getElementById("cpu-bar"), d.cpu.percent);
+
+    const temp = d.cpu.temp_c;
+    const tempEl = document.getElementById("cpu-temp");
+    tempEl.textContent = (temp !== null ? temp.toFixed(1) : "--") + " °C";
+    tempEl.className = "value " + (temp >= 75 ? "crit" : temp >= 65 ? "warn" : "");
+
+    document.getElementById("ram-pct").textContent =
+      d.ram.used_gb.toFixed(1) + " / " + d.ram.total_gb.toFixed(1) + " GB";
+    setBar(document.getElementById("ram-bar"), d.ram.percent);
+
+    document.getElementById("uptime").textContent = d.uptime;
+    document.getElementById("cores").textContent = d.cpu.cores;
+
+    fillDisk("ssd", d.ssd);
+    fillDisk("hdd", d.hdd);
+
+    document.getElementById("conn-status").textContent = "● online";
+    document.getElementById("conn-status").className = "";
+  } catch (e) {
+    document.getElementById("conn-status").textContent = "● connection lost";
+    document.getElementById("conn-status").className = "offline";
+  }
+}
+
+function fillDisk(prefix, disk) {
+  const bar = document.getElementById(prefix + "-bar");
+  const sub = document.getElementById(prefix + "-sub");
+  if (!disk.available) {
+    bar.textContent = "[ not mounted ]";
+    sub.textContent = "check HDD_MOUNT in app.py / fstab";
+    return;
+  }
+  setBar(bar, disk.percent);
+  sub.textContent = disk.used_gb + " / " + disk.total_gb + " GB used (" + disk.free_gb + " GB free)";
+}
+
+function tickClock() {
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString();
+}
+
+refresh();
+tickClock();
+setInterval(refresh, 3000);
+setInterval(tickClock, 1000);
+</script>
+</body>
+</html>
